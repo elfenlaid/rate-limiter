@@ -16,11 +16,12 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/pointfreeco/combine-schedulers.git", from: "0.3.0"),
+        .package(url: "https://github.com/apple/swift-collections", from: "0.0.1")
     ],
     targets: [
         .target(
             name: "RateLimiter",
-            dependencies: []),
+            dependencies: [.product(name: "Collections", package: "swift-collections")]),
         .testTarget(
             name: "RateLimiterTests",
             dependencies: ["RateLimiter",

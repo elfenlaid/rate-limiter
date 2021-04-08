@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import Collections
 
 extension Publishers.RateLimiter {
     public static func queue<S: Scheduler, Limit: UnsignedInteger>(rate: Limit, interval: S.SchedulerTimeType.Stride, scheduler: S) -> ThroughputStrategy {
@@ -19,6 +20,7 @@ public final class QueueThroughputStrategy<Context: Scheduler, Limit: UnsignedIn
     let interval: Context.SchedulerTimeType.Stride
     let rate: Limit
 
+    private var queue = Deque<Action>()
     private var balance: Limit
     private var isRestoreScheduled: Bool = false
     private var isDequeueing: Bool = false
@@ -91,6 +93,4 @@ public final class QueueThroughputStrategy<Context: Scheduler, Limit: UnsignedIn
             }
         }
     }
-
-    private var queue: [Action] = []
 }
