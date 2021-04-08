@@ -9,12 +9,12 @@ import Foundation
 import Combine
 
 extension Publishers.RateLimiter {
-    public static func queue<S: Scheduler, Limit: UnsignedInteger>(rate: Limit, interval: S.SchedulerTimeType.Stride, scheduler: S) -> LimitStrategy {
-        QueueLimiter(rate: rate, interval: interval, scheduler: scheduler)
+    public static func queue<S: Scheduler, Limit: UnsignedInteger>(rate: Limit, interval: S.SchedulerTimeType.Stride, scheduler: S) -> ThroughputStrategy {
+        QueueThroughputStrategy(rate: rate, interval: interval, scheduler: scheduler)
     }
 }
 
-public final class QueueLimiter<Context: Scheduler, Limit: UnsignedInteger>: LimitStrategy {
+public final class QueueThroughputStrategy<Context: Scheduler, Limit: UnsignedInteger>: ThroughputStrategy {
     let scheduler: Context
     let interval: Context.SchedulerTimeType.Stride
     let rate: Limit
@@ -31,7 +31,7 @@ public final class QueueLimiter<Context: Scheduler, Limit: UnsignedInteger>: Lim
         self.balance = rate
     }
 
-    public func enqueue(_ action: @escaping Action) {
+    public func requestThroughput(_ action: @escaping Action) {
         lock.lock()
         defer { lock.unlock() }
 
@@ -40,8 +40,15 @@ public final class QueueLimiter<Context: Scheduler, Limit: UnsignedInteger>: Lim
     }
 
     private func scheduleBalanceRestore() {
+        print(#function)
+
+        lock.lock()
+        defer { lock.unlock() }
+
         if isRestoreScheduled { return }
         isRestoreScheduled = true
+
+        print("Restore scheduled")
 
         scheduler.schedule(after: scheduler.now.advanced(by: interval), tolerance: .zero, options: nil) { [weak self] in
             guard let self = self else { return }
@@ -61,31 +68,27 @@ public final class QueueLimiter<Context: Scheduler, Limit: UnsignedInteger>: Lim
     }
 
     private func dequeueIfNeeded() {
-        guard queue.count > 0, balance > 0, !isDequeueing else {
+        print(#function)
+
+        guard queue.count > 0, balance > 0 else {
+            print("Dequeue skipped")
             return
         }
 
-        isDequeueing = true
+        let actions = queue.prefix(Int(self.balance))
+        print("Dequed actions count: \(actions.count)")
 
-        scheduler.schedule { [weak self] in
-            guard let self = self else { return }
+        queue.removeFirst(actions.count)
+        balance -= Limit(actions.count)
 
-            self.lock.lock()
-            defer { self.lock.unlock() }
-
-            let actions = self.queue.prefix(Int(self.balance))
-            print("Actions count: \(actions.count)")
-            self.queue.removeFirst(actions.count)
-            self.balance -= Limit(actions.count)
-
-            // Schedule restore on deque?
-            self.scheduleBalanceRestore()
-
-            for action in actions {
+        for (i, action) in actions.enumerated() {
+            scheduler.schedule { [weak self] in
                 action()
-            }
 
-            self.isDequeueing = false
+                if i == 0 {
+                    self?.scheduleBalanceRestore()
+                }
+            }
         }
     }
 

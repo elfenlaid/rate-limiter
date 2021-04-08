@@ -10,10 +10,10 @@ import Foundation
 
 public extension Publisher {
     func rateLimited<S: Scheduler>(by rate: UInt, per interval: S.SchedulerTimeType.Stride, scheduler: S) -> Publishers.RateLimiter<Self> {
-        rateLimited(by: QueueLimiter(rate: rate, interval: interval, scheduler: scheduler))
+        rateLimited(by: QueueThroughputStrategy(rate: rate, interval: interval, scheduler: scheduler))
     }
 
-    func rateLimited(by strategy: LimitStrategy) -> Publishers.RateLimiter<Self> {
+    func rateLimited(by strategy: ThroughputStrategy) -> Publishers.RateLimiter<Self> {
         Publishers.RateLimiter(
             upstream: self,
             limiter: strategy
@@ -27,7 +27,7 @@ public extension Publishers {
         public typealias Failure = Upstream.Failure
 
         let upstream: Upstream
-        let limiter: LimitStrategy
+        let limiter: ThroughputStrategy
 
         public func receive<S>(subscriber: S) where S: Subscriber, Upstream.Failure == S.Failure, Upstream.Output == S.Input {
             let inner = Inner(upstream: upstream, downstream: subscriber, limiter: limiter)
@@ -45,12 +45,12 @@ extension Publishers.RateLimiter {
 
         let upstream: Upstream
         let downstream: Downstream
-        let limiter: LimitStrategy
+        let limiter: ThroughputStrategy
         private let lock = NSRecursiveLock()
         private var subscription: Subscription?
         private var demand: Subscribers.Demand = .none
 
-        init(upstream: Upstream, downstream: Downstream, limiter: LimitStrategy) {
+        init(upstream: Upstream, downstream: Downstream, limiter: ThroughputStrategy) {
             self.upstream = upstream
             self.downstream = downstream
             self.limiter = limiter
@@ -63,7 +63,7 @@ extension Publishers.RateLimiter {
 
             Swift.print("Enquing throughput for \(upstream)")
 
-            limiter.enqueue { [weak self] in
+            limiter.requestThroughput { [weak self] in
                 guard let self = self else { return }
 
                 Swift.print("Recieved through for \(self.upstream)")

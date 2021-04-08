@@ -6,7 +6,7 @@ import CombineSchedulers
 final class RateLimiterTests: XCTestCase {
     func testDeque() {
         let scheduler = DispatchQueue.testScheduler
-        let strategy = QueueLimiter(rate: UInt(1), interval: .seconds(1), scheduler: scheduler)
+        let strategy = QueueThroughputStrategy(rate: UInt(1), interval: .seconds(1), scheduler: scheduler)
         var cancellables = Set<AnyCancellable>()
 
         (1...4).publisher
@@ -23,7 +23,7 @@ final class RateLimiterTests: XCTestCase {
 
     func testOne() {
         let scheduler = DispatchQueue.testScheduler
-        let strategy = QueueLimiter(rate: UInt(3), interval: .seconds(1), scheduler: scheduler)
+        let strategy = QueueThroughputStrategy(rate: UInt(3), interval: .seconds(1), scheduler: scheduler)
 
         var cancellables = Set<AnyCancellable>()
 
@@ -41,8 +41,14 @@ final class RateLimiterTests: XCTestCase {
             })
             .store(in: &cancellables)
 
+        (11...15).publisher
+            .rateLimited(by: strategy)
+            .sink(receiveValue: {
+                print($0)
+            })
+            .store(in: &cancellables)
+
         scheduler.advance(by: .seconds(0))
-        scheduler.advance(by: .seconds(0.1))
 
         cancellables.removeAll()
     }

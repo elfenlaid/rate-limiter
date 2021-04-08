@@ -7,8 +7,8 @@
 
 import Foundation
 
-public protocol LimitStrategy { // throughput
+public protocol ThroughputStrategy {
     typealias Action = () -> Void
 
-    func enqueue(_ action: @escaping Action) // request
+    func requestThroughput(_ action: @escaping Action)
 }
