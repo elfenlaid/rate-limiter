@@ -1,3 +1,7 @@
+import Logging
+
 struct RateLimiter {
-    var text = "Hello, World!"
+    static func setLogLevel(_ level: Logger.Level) {
+        log.logLevel = level
+    }
 }

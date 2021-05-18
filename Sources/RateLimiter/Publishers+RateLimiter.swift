@@ -7,6 +7,7 @@
 
 import Combine
 import Foundation
+import Logging
 
 public extension Publisher {
     func rateLimited<S: Scheduler>(by rate: UInt, per interval: S.SchedulerTimeType.Stride, scheduler: S) -> Publishers.RateLimiter<Self> {
@@ -49,11 +50,17 @@ extension Publishers.RateLimiter {
         private let lock = NSRecursiveLock()
         private var subscription: Subscription?
         private var demand: Subscribers.Demand = .none
+        private let logger: Logger
 
         init(upstream: Upstream, downstream: Downstream, limiter: ThroughputStrategy) {
             self.upstream = upstream
             self.downstream = downstream
             self.limiter = limiter
+            self.logger = log.with(metadata: [
+                "id": "\(UUID())",
+                "type": "RateLimiter",
+                "upstream": "\(upstream)",
+            ])
         }
 
         private func requestThroughput() {
@@ -61,15 +68,17 @@ extension Publishers.RateLimiter {
                 return
             }
 
-            Swift.print("Enquing throughput for \(upstream)")
+            logger.trace("Requesting strategy throughput...")
 
             limiter.requestThroughput { [weak self] in
-                guard let self = self else { return }
+                self?.logger.trace("Strategy throughput received")
 
-                Swift.print("Recieved through for \(self.upstream)")
+                guard let self = self else { return }
 
                 self.lock.lock()
                 defer { self.lock.unlock() }
+
+                self.logger.trace("Requesting upstream input...")
 
                 self.demand -= 1
                 self.subscription?.request(.max(1))
@@ -83,7 +92,8 @@ extension Publishers.RateLimiter.Inner: Subscription {
         lock.lock()
         defer { lock.unlock() }
 
-        print("request(_ demand: \(demand))")
+        logger.trace("Demand received: \(demand)")
+
         self.demand += demand
         requestThroughput()
     }
@@ -92,7 +102,8 @@ extension Publishers.RateLimiter.Inner: Subscription {
         lock.lock()
         defer { lock.unlock() }
 
-        print(#function)
+        logger.trace("Subscription cancelled")
+
         subscription?.cancel()
         subscription = nil
     }
@@ -100,7 +111,7 @@ extension Publishers.RateLimiter.Inner: Subscription {
 
 extension Publishers.RateLimiter.Inner: Subscriber {
     func receive(subscription: Subscription) {
-        print("receive(subscription: \(subscription))")
+        logger.trace("Subscription received: \(subscription)")
         self.subscription = subscription
         downstream.receive(subscription: self)
     }
@@ -109,14 +120,16 @@ extension Publishers.RateLimiter.Inner: Subscriber {
         lock.lock()
         defer { lock.unlock() }
 
-        print("receive(_ input: \(input))")
+        logger.trace("Upstream input received: \(input)")
+
         demand += downstream.receive(input)
         requestThroughput()
         return .none
     }
 
     func receive(completion: Subscribers.Completion<Upstream.Failure>) {
-        print("receive(completion: \(completion))")
+        logger.trace("Upstream completed with: \(completion)")
+
         downstream.receive(completion: completion)
     }
 }

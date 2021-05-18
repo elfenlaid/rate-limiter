@@ -1,36 +1,37 @@
 //
 //  File.swift
-//  
+//
 //
 //  Created by elfenlaid on 15.03.21.
 //
 
-import Foundation
-import Combine
 import Collections
-
-extension Publishers.RateLimiter {
-    public static func queue<S: Scheduler, Limit: UnsignedInteger>(rate: Limit, interval: S.SchedulerTimeType.Stride, scheduler: S) -> ThroughputStrategy {
-        QueueThroughputStrategy(rate: rate, interval: interval, scheduler: scheduler)
-    }
-}
+import Combine
+import Foundation
+import Logging
 
 public final class QueueThroughputStrategy<Context: Scheduler, Limit: UnsignedInteger>: ThroughputStrategy {
     let scheduler: Context
     let interval: Context.SchedulerTimeType.Stride
     let rate: Limit
 
+    private var id = UUID()
     private var queue = Deque<Action>()
     private var balance: Limit
     private var isRestoreScheduled: Bool = false
     private var isDequeueing: Bool = false
     private let lock = NSRecursiveLock()
+    private let logger: Logger
 
     public init(rate: Limit, interval: Context.SchedulerTimeType.Stride, scheduler: Context) {
         self.scheduler = scheduler
         self.interval = interval
         self.rate = rate
         self.balance = rate
+        self.logger = log.with(metadata: [
+            "id": "\(UUID())",
+            "strategy": "QueueThroughputStrategy"
+        ])
     }
 
     public func requestThroughput(_ action: @escaping Action) {
@@ -42,15 +43,13 @@ public final class QueueThroughputStrategy<Context: Scheduler, Limit: UnsignedIn
     }
 
     private func scheduleBalanceRestore() {
-        print(#function)
-
         lock.lock()
         defer { lock.unlock() }
 
         if isRestoreScheduled { return }
         isRestoreScheduled = true
 
-        print("Restore scheduled")
+        logger.trace("Balance restore scheduled...")
 
         scheduler.schedule(after: scheduler.now.advanced(by: interval), tolerance: .zero, options: nil) { [weak self] in
             guard let self = self else { return }
@@ -65,20 +64,26 @@ public final class QueueThroughputStrategy<Context: Scheduler, Limit: UnsignedIn
     }
 
     private func restoreBalance() {
-        print(#function)
+        logger.trace("Balance restored")
+
         balance = rate
     }
 
     private func dequeueIfNeeded() {
-        print(#function)
+        logger.trace("Checking deque requisites...")
 
-        guard queue.count > 0, balance > 0 else {
-            print("Dequeue skipped")
+        guard queue.count > 0 else {
+            logger.trace("Dequeue skipped: no queued requests")
             return
         }
 
-        let actions = queue.prefix(Int(self.balance))
-        print("Dequed actions count: \(actions.count)")
+        guard balance > 0 else {
+            logger.trace("Dequeue skipped: no balance, queued: \(queue.count)")
+            return
+        }
+
+        let actions = queue.prefix(Int(balance))
+        logger.trace("Dequed actions: \(actions.count)")
 
         queue.removeFirst(actions.count)
         balance -= Limit(actions.count)
