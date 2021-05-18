@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "RateLimiter",
+    name: "rate-limiter",
     platforms: [
         .iOS(.v13),
         .macOS(.v10_15)
@@ -13,6 +13,7 @@ let package = Package(
         .library(
             name: "RateLimiter",
             targets: ["RateLimiter"]),
+        .library(name: "RateLimiter-Dynamic", type: .dynamic, targets: ["RateLimiter"]),
     ],
     dependencies: [
         .package(url: "https://github.com/pointfreeco/combine-schedulers.git", from: "0.3.0"),

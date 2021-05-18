@@ -22,8 +22,8 @@
 
 import Logging
 
-struct RateLimiter {
-    static func setLogLevel(_ level: Logger.Level) {
+public struct RateLimiter {
+    public static func setLogLevel(_ level: Logger.Level) {
         log.logLevel = level
     }
 }
