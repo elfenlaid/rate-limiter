@@ -1,27 +1,38 @@
-import UIKit
 import RateLimiter
 import CombineSchedulers
 import Combine
 
-let scheduler = DispatchQueue.testScheduler
-let strategy = QueueLimiter(rate: UInt(3), interval: .seconds(1), scheduler: scheduler)
-
 var cancellables = Set<AnyCancellable>()
+defer { cancellables.removeAll() }
+
+let scheduler = DispatchQueue.testScheduler
+let strategy = QueueThroughputStrategy(rate: UInt(2), interval: .seconds(1), scheduler: scheduler)
+
+var values: [Int] = []
 
 (1...5).publisher
     .rateLimited(by: strategy)
     .sink(receiveValue: {
-        print($0)
+        values.append($0)
     })
     .store(in: &cancellables)
 
-(6...10).publisher
+(1...5).publisher
     .rateLimited(by: strategy)
     .sink(receiveValue: {
-        print($0)
+        values.append($0)
     })
     .store(in: &cancellables)
 
+scheduler.advance(by: .seconds(0))
+
+// Rate limiter starts immediately, and throughputs events up to the initial capacity:
+print(values) // [1,1]
+
+// Now limiter waits for its interval to pass...
 scheduler.advance(by: .seconds(1))
 
-cancellables.removeAll()
+// ... to get another round of values
+print(values) // [1,1, 2,2]
+
+// Though, the limit restore starts right after the first value is emmited
